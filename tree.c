@@ -181,6 +181,90 @@ static int load_index_for_tree(TreeIndex *index) {
     fclose(index_file);
     return 0;
 }
+
+static int build_tree_level(const TreeIndex *index, const char *prefix, ObjectID *id_out) {
+    Tree level_tree;
+    level_tree.count = 0;
+
+    size_t prefix_length = strlen(prefix);
+    for (int entry_idx = 0; entry_idx < index->count; entry_idx++) {
+        const char *indexed_path = index->entries[entry_idx].path;
+        if (prefix_length > 0 && strncmp(indexed_path, prefix, prefix_length) != 0) {
+            continue;
+        }
+
+        const char *suffix_path = indexed_path + prefix_length;
+        if (suffix_path[0] == '\0') {
+            continue;
+        }
+
+        const char *slash_pos = strchr(suffix_path, '/');
+        if (!slash_pos) {
+            if (level_tree.count >= MAX_TREE_ENTRIES) {
+                return -1;
+            }
+
+            TreeEntry *file_entry = &level_tree.entries[level_tree.count++];
+            file_entry->mode = index->entries[entry_idx].mode;
+            file_entry->hash = index->entries[entry_idx].hash;
+            snprintf(file_entry->name, sizeof(file_entry->name), "%s", suffix_path);
+            continue;
+        }
+
+        size_t dir_name_len = (size_t)(slash_pos - suffix_path);
+        if (dir_name_len == 0 || dir_name_len >= 256) {
+            return -1;
+        }
+
+        char dir_name[256];
+        memcpy(dir_name, suffix_path, dir_name_len);
+        dir_name[dir_name_len] = '\0';
+
+        int dir_already_present = 0;
+        for (int tree_idx = 0; tree_idx < level_tree.count; tree_idx++) {
+            if (level_tree.entries[tree_idx].mode == MODE_DIR && strcmp(level_tree.entries[tree_idx].name, dir_name) == 0) {
+                dir_already_present = 1;
+                break;
+            }
+        }
+        if (dir_already_present) {
+            continue;
+        }
+
+        char child_prefix_path[1024];
+        snprintf(child_prefix_path, sizeof(child_prefix_path), "%s%s/", prefix, dir_name);
+
+        ObjectID child_tree_id;
+        int child_result = build_tree_level(index, child_prefix_path, &child_tree_id);
+        if (child_result != 0) {
+            return -1;
+        }
+
+        if (level_tree.count >= MAX_TREE_ENTRIES) {
+            return -1;
+        }
+
+        TreeEntry *dir_entry = &level_tree.entries[level_tree.count++];
+        dir_entry->mode = MODE_DIR;
+        dir_entry->hash = child_tree_id;
+        snprintf(dir_entry->name, sizeof(dir_entry->name), "%s", dir_name);
+    }
+
+    if (level_tree.count == 0) {
+        return -1;
+    }
+
+    void *serialized_data = NULL;
+    size_t serialized_len = 0;
+    if (tree_serialize(&level_tree, &serialized_data, &serialized_len) != 0) {
+        return -1;
+    }
+
+    int write_result = object_write(OBJ_TREE, serialized_data, serialized_len, id_out);
+    free(serialized_data);
+    return write_result;
+}
+
 // Build a tree hierarchy from the current index and write all tree
 // objects to the object store.
 //
