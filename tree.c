@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <inttypes.h>
 #include <dirent.h>
 #include <sys/stat.h>
 
@@ -21,6 +23,20 @@
 #define MODE_FILE      0100644
 #define MODE_EXEC      0100755
 #define MODE_DIR       0040000
+
+// Forward declaration (implemented in object.c)
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
+
+typedef struct {
+    uint32_t mode;
+    ObjectID hash;
+    char path[512];
+} TreeIndexEntry;
+
+typedef struct {
+    TreeIndexEntry entries[10000];
+    int count;
+} TreeIndex;
 
 // ─── PROVIDED ───────────────────────────────────────────────────────────────
 
