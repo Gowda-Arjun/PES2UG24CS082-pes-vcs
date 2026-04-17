@@ -279,8 +279,18 @@ static int build_tree_level(const TreeIndex *index, const char *prefix, ObjectID
 //
 // Returns 0 on success, -1 on error.
 int tree_from_index(ObjectID *id_out) {
-    // TODO: Implement recursive tree building
-    // (See Lab Appendix for logical steps)
-    (void)id_out;
-    return -1;
+    if (!id_out) {
+        return -1;
+    }
+
+    TreeIndex tree_index;
+    if (load_index_for_tree(&tree_index) != 0) {
+        return -1;
+    }
+
+    if (tree_index.count == 0) {
+        return -1;
+    }
+
+    return build_tree_level(&tree_index, "", id_out);
 }
