@@ -169,6 +169,27 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         free(full_obj);
         return -1;
     }
+
+    if (close(fd) != 0) {
+        unlink(temp_path);
+        free(full_obj);
+        return -1;
+    }
+
+    if (rename(temp_path, final_path) != 0) {
+        unlink(temp_path);
+        free(full_obj);
+        return -1;
+    }
+
+    int dir_fd = open(shard_dir, O_RDONLY | O_DIRECTORY);
+    if (dir_fd >= 0) {
+        (void)fsync(dir_fd);
+        close(dir_fd);
+    }
+
+    free(full_obj);
+    return 0;
 }
 
 // Read an object from the store.
