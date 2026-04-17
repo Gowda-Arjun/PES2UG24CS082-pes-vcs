@@ -163,6 +163,16 @@ static int load_index_for_tree(TreeIndex *index) {
 
         int parsed_fields = sscanf(line_buf, "%o %64s %llu %u %511[^\n]",
                                    &entry_mode, hash_hex, &ignored_mtime, &ignored_size, entry_path);
+        if (parsed_fields != 5) {
+            fclose(index_file);
+            return -1;
+        }
+
+        if (hex_to_hash(hash_hex, &entry->hash) != 0) {
+            fclose(index_file);
+            return -1;
+        }
+
         entry->mode = entry_mode;
         snprintf(entry->path, sizeof(entry->path), "%s", entry_path);
         index->count++;
