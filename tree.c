@@ -132,6 +132,45 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 
 // ─── TODO: Implement these ──────────────────────────────────────────────────
 
+static int load_index_for_tree(TreeIndex *index) {
+    if (!index) {
+        return -1;
+    }
+
+    index->count = 0;
+    FILE *index_file = fopen(INDEX_FILE, "r");
+    if (!index_file) {
+        if (errno == ENOENT) {
+            return 0;
+        }
+        return -1;
+    }
+
+    int max_entries = (int)(sizeof(index->entries) / sizeof(index->entries[0]));
+    char line_buf[2048];
+    while (fgets(line_buf, sizeof(line_buf), index_file)) {
+        if (index->count >= max_entries) {
+            fclose(index_file);
+            return -1;
+        }
+
+        TreeIndexEntry *entry = &index->entries[index->count];
+        char hash_hex[HASH_HEX_SIZE + 1];
+        unsigned int entry_mode;
+        unsigned long long ignored_mtime;
+        unsigned int ignored_size;
+        char entry_path[sizeof(entry->path)];
+
+        int parsed_fields = sscanf(line_buf, "%o %64s %llu %u %511[^\n]",
+                                   &entry_mode, hash_hex, &ignored_mtime, &ignored_size, entry_path);
+        entry->mode = entry_mode;
+        snprintf(entry->path, sizeof(entry->path), "%s", entry_path);
+        index->count++;
+    }
+
+    fclose(index_file);
+    return 0;
+}
 // Build a tree hierarchy from the current index and write all tree
 // objects to the object store.
 //
