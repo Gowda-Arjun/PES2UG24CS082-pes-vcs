@@ -201,10 +201,63 @@ int index_load(Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_save(const Index *index) {
-    // TODO: Implement atomic index saving
-    // (See Lab Appendix for logical steps)
-    (void)index;
-    return -1;
+    if (!index) return -1;
+
+    IndexEntry *sorted_entries = NULL;
+    if (index->count > 0) {
+        sorted_entries = malloc((size_t)index->count * sizeof(IndexEntry));
+        if (!sorted_entries) return -1;
+        memcpy(sorted_entries, index->entries, (size_t)index->count * sizeof(IndexEntry));
+        qsort(sorted_entries, index->count, sizeof(IndexEntry), compare_index_entries);
+    }
+
+    char tmp_path[512];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", INDEX_FILE);
+
+    FILE *f = fopen(tmp_path, "w");
+    if (!f) {
+        free(sorted_entries);
+        return -1;
+    }
+
+    for (int i = 0; i < index->count; i++) {
+        char hash_hex[HASH_HEX_SIZE + 1];
+        hash_to_hex(&sorted_entries[i].hash, hash_hex);
+        if (fprintf(f, "%o %s %" PRIu64 " %u %s\n",
+                    sorted_entries[i].mode,
+                    hash_hex,
+                    sorted_entries[i].mtime_sec,
+                    sorted_entries[i].size,
+                    sorted_entries[i].path) < 0) {
+            free(sorted_entries);
+            fclose(f);
+            unlink(tmp_path);
+            return -1;
+        }
+    }
+
+    fflush(f);
+    if (fsync(fileno(f)) != 0) {
+        free(sorted_entries);
+        fclose(f);
+        unlink(tmp_path);
+        return -1;
+    }
+
+    if (fclose(f) != 0) {
+        free(sorted_entries);
+        unlink(tmp_path);
+        return -1;
+    }
+
+    if (rename(tmp_path, INDEX_FILE) != 0) {
+        free(sorted_entries);
+        unlink(tmp_path);
+        return -1;
+    }
+
+    free(sorted_entries);
+    return 0;
 }
 
 // Stage a file for the next commit.
